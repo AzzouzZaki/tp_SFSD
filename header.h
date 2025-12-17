@@ -95,9 +95,8 @@ typedef struct NodeBtree{
 
 int checkIfLeafNode(B_Tree *Node);
 void allocateBTreeNode(B_Tree **Node);
-void splitLeafNode(B_Tree **Root, B_Tree *fullLeafNode , int newKey);
+void splitLeafNode(B_Tree **Root, B_Tree *fullLeafNode , int newKey, int *middleValue, B_Tree **newLeftNode, B_Tree **newRightNode);
 void createLeafArray(B_Tree *LeafNode, int newKey, int (*tmpArr)[5]);
-void createInternalArray(B_Tree *InternalNode, int middlevalue, B_Tree *newNode, int (*tmpArr)[5], B_Tree *(*tmpChildren)[6]);
 
 
 

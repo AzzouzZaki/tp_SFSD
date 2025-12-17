@@ -45,15 +45,84 @@ void displayIndexFile(char *filename)
 }
 
 /* ------------------ B-tree display helper ------------------ */
-void printBTree(B_Tree *Node, int level)
+void printBTree(B_Tree *node, int level)
 {
-    if (!Node) return;
-    for (int i = Node->degree - 1; i >= 0; i--) {
-        printBTree(Node->child[i], level + 1);
-        if (i < Node->degree - 1)
-            printf("%*sKey[%d]=%d\n", level * 4, "", i, Node->Key[i]);
+    if (node == NULL) return;
+
+    printf("Level %d: [", level);
+
+    for (int i = 0; i < node->degree - 1; i++)
+    {
+        printf("%d", node->Key[i]);
+        if (i < node->degree - 2) printf(" ");
+    }
+    printf("]\n");
+
+    /* Print children */
+    for (int i = 0; i < node->degree; i++)
+    {
+        printBTree(node->child[i], level + 1);
     }
 }
+
+
+
+
+// Recursive function to create a full B-tree of given height
+B_Tree* createFullBTree(int height, int* keyCounter, B_Tree** fullLeaf) {
+    int n = 100; // range for random keys
+    if (height <= 0) return NULL;
+
+    B_Tree* node = NULL;
+    allocateBTreeNode(&node);
+
+    // Fill this node with max keys (4)
+    for (int i = 0; i < 4; i++) {
+        node->Key[i] = (*keyCounter)++;
+         int r = rand() % (n + 1);
+        (*keyCounter)= (*keyCounter) + r + 1; // ensure increasing keys
+    }
+    node->degree = 5; // max keys + 1 children
+
+    if (height == 1) {
+        // This is a leaf
+        *fullLeaf = node; // keep track of the deepest full leaf
+        return node;
+    }
+
+    // Create 5 children recursively
+    for (int i = 0; i < 5; i++) {
+        node->child[i] = createFullBTree(height - 1, keyCounter, fullLeaf);
+        if (node->child[i] != NULL)
+            node->child[i]->parent = node;
+    }
+
+    return node;
+}
+
+// Wrapper function
+B_Tree* buildBTreeWithHeight(int height, B_Tree** fullLeaf) {
+    int keyCounter = 10; // starting key
+    return createFullBTree(height, &keyCounter, fullLeaf);
+}
+
+// Simple printer for B-tree levels
+void printBTreeLevels(B_Tree* root, int level) {
+    if (!root) return;
+
+    printf("Level %d: [", level);
+    for (int i = 0; i < root->degree - 1; i++) {
+        printf("%d ", root->Key[i]);
+    }
+    printf("]\n");
+
+    for (int i = 0; i < root->degree; i++) {
+        printBTreeLevels(root->child[i], level + 1);
+    }
+}
+
+
+
 
 /* ------------------ Main menu ------------------ */
 int main()
@@ -124,30 +193,46 @@ int main()
             printf("✔ Key inserted successfully\n");
             break;
 
-       case 5: /* B-tree split */
-        if (BRoot == NULL) {
-            allocateBTreeNode(&BRoot);
-            // Full leaf node
-            BRoot->Key[0] = 10;
-            BRoot->Key[1] = 20;
-            BRoot->Key[2] = 30;
-            BRoot->Key[3] = 40;
-            BRoot->degree = 5;
+       /* -------------------------------------------------- */
+        case 5: /* B-tree split (create full tree and split a leaf) */
+        {
+            int h, key;
+            printf("Enter desired height of B-tree: ");
+            scanf("%d", &h);
+
+            B_Tree* fullLeaf = NULL;
+            BRoot = buildBTreeWithHeight(h, &fullLeaf);
+
+            if (fullLeaf == NULL) {
+                printf("✖ Could not create full leaf node\n");
+                break;
+            }
+
+            printf("\nCurrent B-tree before insertion:\n");
+            printBTreeLevels(BRoot, 0);
+
+            printf("\nEnter key to insert into full leaf: ");
+            scanf("%d", &key);
+
+            int middleValue;
+            B_Tree *newLeft = NULL, *newRight = NULL;
+
+            splitLeafNode(&BRoot, fullLeaf, key, &middleValue, &newLeft, &newRight);
+
+            printf("\nInserted key %d into full leaf (middle value to promote: %d)\n", key, middleValue);
+            printf("New Left Node Keys: [");
+            for(int i = 0; i < newLeft->degree - 1; i++){
+                printf("%d ", newLeft->Key[i]);
+            }
+            printf("]\n");
+            printf("New Right Node Keys: [");
+            for(int i = 0; i < newRight->degree - 1; i++){
+                printf("%d ", newRight->Key[i]);
+            }
+            printf("]\n");
         }
-
-        printf("\nCurrent B-tree before insertion:\n");
-        printBTree(BRoot, 0);
-
-        printf("\nEnter key to insert into full leaf: ");
-        scanf("%d", &key);
-
-        splitLeafNode(&BRoot, BRoot, key);
-
-        printf("\nB-tree after inserting %d:\n", key);
-        printBTree(BRoot, 0);
-
-        printf("✔ B-tree split executed (if needed)\n");
         break;
+
         case 6: /* Display T1/T2 */
             if (RootT1 == NULL) printf("✖ Tree is empty\n");
             else {
