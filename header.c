@@ -301,7 +301,7 @@ void processT2(t_TOF *f, t_T2 *Root, int *Nblocks){
 void searchKey(t_T1 *Root, int Key, int *Found, int *BlkNum, int *RecNum){
     *Found = 0;
     t_T1 *current = Root;
-    while(current != NULL){
+    while(current != NULL && *Found == 0){
         if(Key < current->V1){
             current = current->LC;
         }else
@@ -419,112 +419,89 @@ void createInternalArray(B_Tree *InternalNode, int middlevalue, B_Tree *newNode,
     
 }
 
+void splitLeafNode(B_Tree **Root, B_Tree *fullNode, int newKey)
+{
+    int tmpKeys[5];   // 4 existing + 1 new
+    int i, j;
 
-void splitLeafNode(B_Tree **Root, B_Tree *fullLeafNode , int newKey){
+    /* -------------------------------------------------- */
+    /* 1. Copy existing keys + newKey into tmpKeys        */
+    for (i = 0; i < 4; i++)
+        tmpKeys[i] = fullNode->Key[i];
+    tmpKeys[4] = newKey;
 
-    if(Root == NULL || fullLeafNode == NULL || !checkIfLeafNode(fullLeafNode) || fullLeafNode->degree != 5){
-        return;
-    }
-    int middlevalue ;
-    int done = 0;
-    B_Tree *p = fullLeafNode;
-    int tmpArr[5];
-    int tmp = 0;
-    B_Tree *tmpChildren[6];
-    B_Tree *tmpChild = NULL;
-    B_Tree *newNode = NULL;
-    while (p->parent != NULL && done == 0)
-    {
-        if((checkIfLeafNode(p))){
-            createLeafArray(p,newKey, &tmpArr);
-            middlevalue = tmpArr[2];
-            allocateBTreeNode(&newNode); 
-            p->Key[0] = tmpArr[0];
-            p->Key[1] = tmpArr[1];
-            p->degree = 2;
-            newNode->Key[0] = tmpArr[3];
-            newNode->Key[1] = tmpArr[4];
-            newNode->degree = 2;
-            p = p->parent;
-        }else
-        {
-            if(p->degree < 5){
-                int i = 0;
-                while(  i < (p->degree - 1) && middlevalue > p->Key[i]){
-                    i++;
-                }
-                while (p->degree - 1 > i)
-                {
-                    tmp = p->Key[i];
-                    p->Key[i] = middlevalue;
-                    middlevalue = tmp;
-                    tmpChild = p->child[i + 1];
-                    p->child[i + 1] = newNode;
-                    newNode = tmpChild;
-                    i++;
-                }
-                if(i == p->degree - 1){
-                    p->Key[i] = middlevalue;
-                    p->child[i + 1] = newNode;
-                    p->degree++;
-                }
-                done = 1;
+    /* -------------------------------------------------- */
+    /* 2. Sort tmpKeys                                    */
+    for (i = 0; i < 5; i++) {
+        for (j = i + 1; j < 5; j++) {
+            if (tmpKeys[i] > tmpKeys[j]) {
+                int t = tmpKeys[i];
+                tmpKeys[i] = tmpKeys[j];
+                tmpKeys[j] = t;
             }
-            else
-            {
-                createInternalArray(p, middlevalue, newNode, &tmpArr, &tmpChildren);
-                middlevalue = tmpArr[2];
-                allocateBTreeNode(&newNode);
-                p->Key[0] = tmpArr[0];
-                p->Key[1] = tmpArr[1];
-                p->child[0] = tmpChildren[0];
-                p->child[0]->parent = p; 
-                p->child[1] = tmpChildren[1];
-                p->child[1]->parent = p;
-                p->child[2] = tmpChildren[2];
-                p->child[2]->parent = p;
-                p->degree = 3;
-                newNode->Key[0] = tmpArr[3];
-                newNode->Key[1] = tmpArr[4];
-                newNode->child[0] = tmpChildren[3];
-                newNode->child[0]->parent = newNode;
-                newNode->child[1] = tmpChildren[4];
-                newNode->child[1]->parent = newNode;
-                newNode->child[2] = tmpChildren[5];
-                newNode->child[2]->parent = newNode;
-                newNode->degree = 3;
-                p = p->parent;
-            }
-            
         }
     }
-    if(done == 0){ //we reached the root and it is full
-        createInternalArray(p, middlevalue, newNode, &tmpArr, &tmpChildren);
-        middlevalue = tmpArr[2];
-        allocateBTreeNode(&newNode);
-        p->Key[0] = tmpArr[0];
-        p->Key[1] = tmpArr[1];
-        p->child[0] = tmpChildren[0];
-        p->child[1] = tmpChildren[1];
-        p->child[2] = tmpChildren[2];
-        p->degree = 3;
-        newNode->Key[0] = tmpArr[3];
-        newNode->Key[1] = tmpArr[4];
-        newNode->child[0] = tmpChildren[3];
-        newNode->child[1] = tmpChildren[4];
-        newNode->child[2] = tmpChildren[5];
-        newNode->degree = 3;
+
+    /* -------------------------------------------------- */
+    /* 3. Create new right leaf                           */
+    B_Tree *newNode = NULL;
+    allocateBTreeNode(&newNode);
+
+    /* Left node (reuse fullNode) */
+    fullNode->Key[0] = tmpKeys[0];
+    fullNode->Key[1] = tmpKeys[1];
+    fullNode->degree = 2;
+
+    /* Right node */
+    newNode->Key[0] = tmpKeys[3];
+    newNode->Key[1] = tmpKeys[4];
+    newNode->degree = 2;
+
+    int middleKey = tmpKeys[2];
+
+    /* -------------------------------------------------- */
+    /* 4. If fullNode was root → create new root          */
+    if (fullNode->parent == NULL) {
         B_Tree *newRoot = NULL;
         allocateBTreeNode(&newRoot);
-        newRoot->Key[0] = middlevalue;
-        newRoot->child[0] = p;
+
+        newRoot->Key[0] = middleKey;
+        newRoot->child[0] = fullNode;
         newRoot->child[1] = newNode;
         newRoot->degree = 2;
-        p->parent = newRoot;
+
+        fullNode->parent = newRoot;
         newNode->parent = newRoot;
         *Root = newRoot;
+        return;
     }
-}
-    
 
+    /* -------------------------------------------------- */
+    /* 5. Insert middleKey into parent                    */
+    B_Tree *parent = fullNode->parent;
+
+    /* Parent has space */
+    if (parent->degree < 5) {
+        int pos = parent->degree - 1;
+
+        while (pos > 0 && middleKey < parent->Key[pos - 1]) {
+            parent->Key[pos] = parent->Key[pos - 1];
+            parent->child[pos + 1] = parent->child[pos];
+            pos--;
+        }
+
+        parent->Key[pos] = middleKey;
+        parent->child[pos] = fullNode;
+        parent->child[pos + 1] = newNode;
+        parent->degree++;
+
+        newNode->parent = parent;
+        return;
+    }
+
+    /* -------------------------------------------------- */
+    /* 6. Parent is FULL → split parent recursively       */
+    newNode->parent = parent;
+    splitLeafNode(Root, parent, middleKey);
+}
 

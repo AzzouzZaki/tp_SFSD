@@ -1,98 +1,178 @@
-#include <stdio.h>
-#include <stdlib.h>
 #include "header.h"
+#include <stdlib.h>
+#include <stdio.h>
 
-// helper function to print T2 tree (inorder)
-void PrintT2(t_T2 *root) {
-    if (root == NULL) return;
-    PrintT2(root->LC);
-    printf("   [Key=%d | Block=%d | Rec=%d]\n", root->Key, root->BlkNum, root->RecNum);
-    PrintT2(root->RC);
+/* ------------------ Display functions ------------------ */
+void displayT2(t_T2 *Root)
+{
+    if (Root != NULL) {
+        displayT2(Root->LC);
+        printf("(%d | B:%d R:%d) ", Root->Key, Root->BlkNum, Root->RecNum);
+        displayT2(Root->RC);
+    }
 }
 
-// helper function to print T1 tree (inorder)
-void PrintT1(t_T1 *root) {
-    if (root == NULL) return;
-    PrintT1(root->LC);
-    printf("\nT1 Node: Range [%d , %d]\n", root->V1, root->V2);
-    PrintT2(root->R);
-    PrintT1(root->RC);
+void displayT1(t_T1 *Root)
+{
+    if (Root != NULL) {
+        displayT1(Root->LC);
+        printf("\nT1 Node [V1=%d , V2=%d] -> T2: ", Root->V1, Root->V2);
+        displayT2(Root->R);
+        displayT1(Root->RC);
+    }
 }
 
-int main(void) {
+void displayIndexFile(char *filename)
+{
+    t_TOF *f;
+    t_block Buf;
 
-    t_TOF *F = NULL;
-    t_T1 *Root = NULL;
+    TOF_open(&f, filename, 'E');
+    int nBlocks = getHeader(f, "Nblocks");
+    printf("\nIndex file contains %d blocks\n", nBlocks);
 
-    printf("Creating TOF file...\n");
+    for (int i = 1; i <= nBlocks; i++) {
+        TOF_readBlock(f, i, &Buf);
+        printf("\nBlock %d (%d records):\n", i, Buf.Nrec);
+        for (int j = 0; j < Buf.Nrec; j++) {
+            printf("  Key=%d | B=%d | R=%d\n",
+                   Buf.Tab[j].Key,
+                   Buf.Tab[j].blkAddr,
+                   Buf.Tab[j].recAddr);
+        }
+    }
+    TOF_close(f);
+}
 
-    TOF_open(&F, "test.tof", 'N');
+/* ------------------ B-tree display helper ------------------ */
+void printBTree(B_Tree *Node, int level)
+{
+    if (!Node) return;
+    for (int i = Node->degree - 1; i >= 0; i--) {
+        printBTree(Node->child[i], level + 1);
+        if (i < Node->degree - 1)
+            printf("%*sKey[%d]=%d\n", level * 4, "", i, Node->Key[i]);
+    }
+}
 
-    // ---- create test blocks ----
+/* ------------------ Main menu ------------------ */
+int main()
+{
+    t_TOF *IndexFile = NULL;
+    t_T1 *RootT1 = NULL;
+    B_Tree *BRoot = NULL;
 
-    t_block B;
+    int choice;
+    int key, blk, rec;
+    int found;
 
-    // Block 1
-    B.Nrec = 3;
-    B.Tab[0].Key = 10;
-    B.Tab[0].blkAddr = 1;
-    B.Tab[0].recAddr = 1;
-    B.Tab[1].Key = 20;
-    B.Tab[1].blkAddr = 2;
-    B.Tab[1].recAddr = 2;
-    B.Tab[2].Key = 30;
-    B.Tab[2].blkAddr = 1;
-    B.Tab[2].recAddr = 3;
-    B.Nrec = 3;
-    TOF_writeBlock(F, 1, &B);
+    char filename[50] = "output.tof";
 
-    // Block 2
-    B.Nrec = 3;
-    B.Tab[0].Key = 40;
-    B.Tab[0].blkAddr = 2;
-    B.Tab[0].recAddr = 5;
-    B.Tab[1].Key = 50;
-    B.Tab[1].blkAddr = 2;
-    B.Tab[1].recAddr = 6;
-    B.Tab[2].Key = 60;
-    B.Tab[2].blkAddr = 2;
-    B.Tab[2].recAddr = 7;
-    B.Nrec = 3;
-    
-    TOF_writeBlock(F, 2, &B);
+    do {
+        printf("\n==================== MENU ====================\n");
+        printf("1. Load T1/T2 from index file\n");
+        printf("2. Save index from T1/T2 to file\n");
+        printf("3. Search a key\n");
+        printf("4. Insert a key\n");
+        printf("5. Split a node in B-tree\n");
+        printf("6. Display T1/T2 trees (RAM)\n");
+        printf("7. Display index file (TOF)\n");
+        printf("0. Exit\n");
+        printf("==============================================\n");
+        printf("Your choice: ");
+        scanf("%d", &choice);
 
-    setHeader(F, "Nblocks", 2);
+        switch (choice) {
 
-    TOF_close(F);   // save header and close
+        case 1: /* Load T1/T2 from TOF */
+            TOF_open(&IndexFile, filename, 'E');
+            LoadTreeFromFile(IndexFile, &RootT1);
+            TOF_close(IndexFile);
+            printf("✔ Index loaded into T1/T2 successfully\n");
+            break;
 
+        case 2: /* Save T1/T2 to TOF */
+            TOF_open(&IndexFile, filename, 'N');
+            SeveTreeToFile(IndexFile, RootT1);
+            TOF_close(IndexFile);
+            printf("✔ T1/T2 saved to index file\n");
+            break;
 
-    // ---- OPEN FILE IN READ MODE ----
+        case 3: /* Search */
+            if (RootT1 == NULL) {
+                printf("✖ Tree is empty. Load or insert first.\n");
+                break;
+            }
+            printf("Enter key to search: ");
+            scanf("%d", &key);
+            searchKey(RootT1, key, &found, &blk, &rec);
+            if (found)
+                printf("✔ Key found → Block: %d | Record: %d\n", blk, rec);
+            else
+                printf("✖ Key not found\n");
+            break;
 
-    printf("Reopening file...\n");
+        case 4: /* Insert */
+            if (RootT1 == NULL) createTree(&RootT1);
+            printf("Enter key: ");
+            scanf("%d", &key);
+            printf("Enter block number: ");
+            scanf("%d", &blk);
+            printf("Enter record number: ");
+            scanf("%d", &rec);
+            insertInTree(&RootT1, key, blk, rec);
+            printf("✔ Key inserted successfully\n");
+            break;
 
-    TOF_open(&F, "test.tof", 'E');
+       case 5: /* B-tree split */
+        if (BRoot == NULL) {
+            allocateBTreeNode(&BRoot);
+            // Full leaf node
+            BRoot->Key[0] = 10;
+            BRoot->Key[1] = 20;
+            BRoot->Key[2] = 30;
+            BRoot->Key[3] = 40;
+            BRoot->degree = 5;
+        }
 
+        printf("\nCurrent B-tree before insertion:\n");
+        printBTree(BRoot, 0);
 
-    // ---- LOAD TREE FROM FILE ----
+        printf("\nEnter key to insert into full leaf: ");
+        scanf("%d", &key);
 
-    printf("Loading index tree...\n");
+        splitLeafNode(&BRoot, BRoot, key);
 
-    LoadTreeFromFile(F, &Root);
+        printf("\nB-tree after inserting %d:\n", key);
+        printBTree(BRoot, 0);
 
+        printf("✔ B-tree split executed (if needed)\n");
+        break;
+        case 6: /* Display T1/T2 */
+            if (RootT1 == NULL) printf("✖ Tree is empty\n");
+            else {
+                printf("\n======= T1 / T2 TREE CONTENT =======\n");
+                displayT1(RootT1);
+                printf("\n===================================\n");
+            }
+            break;
 
-    // ---- DISPLAY TREE ----
+        case 7: /* Display index file */
+            displayIndexFile(filename);
+            break;
 
-    printf("\n===== INDEX TREE =====\n");
-    PrintT1(Root);
+        case 0:
+            printf("Exiting program...\n");
+            break;
 
+        default:
+            printf("✖ Invalid choice\n");
+        }
 
-    // ---- CLEANUP ----
+    } while (choice != 0);
 
-    freeTree(&Root);
-    TOF_close(F);
-
-    printf("\nTest complete.\n");
+    /* Cleanup */
+    freeTree(&RootT1);
 
     return 0;
 }
-
