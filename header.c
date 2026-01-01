@@ -70,6 +70,7 @@ long getHeader( t_TOF *F , char * hname )
 {
    if ( strcmp( hname , "Nblocks" ) == 0 ) return F->h.Nblocks;
    fprintf(stderr, "getHeader : Unknown headerName: \"%s\"\n", hname);
+   return 0;
 }
 
 void createTree(t_T1 **Root){
